@@ -181,3 +181,93 @@ const port = Number(process.env.PORT || 3000);
 app.listen(port, () => {
   console.log('Vider Bridge API listening on port ' + port);
 });
+const express = require('express');
+const cors = require('cors');
+const app = express();
+
+app.use(express.json({ limit: '50mb' })); // ขยายลิมิตการรับส่งข้อมูลขนาดใหญ่
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(cors());
+
+// รายชื่อบัญชีอีเมลหลัก (สามารถเพิ่มต่อท้ายได้แบบไม่จำกัด)
+let AUTHORIZED_EMAILS = [
+    "thanva04122532@gmail.com",
+    "rufiodinoto244@gmail.com",
+    "phupingbut244@gmail.com",
+    "thanvas9991@gmail.com"
+];
+
+// หน้าแรกตรวจสอบสถานะระบบ
+app.get('/', (req, res) => {
+    res.json({
+        status: "online",
+        mode: "Unlimited & Dynamic Scaling",
+        system: "Chat Vider AGI Ecosystem",
+        owner: "Thanva Phupingbut",
+        totalAuthorizedEmails: AUTHORIZED_EMAILS.length,
+        message: "Vider Gmail Login Bridge is running with NO LIMITS!"
+    });
+});
+
+// Endpoint สำหรับตรวจสอบสิทธิ์และล็อกอิน (รองรับการขยายแบบไม่จำกัด)
+app.post('/api/vider/auth', (req, res) => {
+    const { email, accessCode } = req.body;
+
+    // ตรวจสอบรหัสผ่านหลัก #AGI244
+    if (AUTHORIZED_EMAILS.includes(email) && accessCode === "#AGI244") {
+        res.status(200).json({
+            status: "success",
+            limit: "unlimited",
+            message: "ยืนยันสิทธิ์สำเร็จ! ระบบเปิดใช้งานแบบไม่จำกัดลิมิตสำหรับคุณธันวา",
+            owner: "Thanva Phupingbut",
+            system: "Chat Vider AGI Ecosystem",
+            timestamp: new Date().toISOString()
+        });
+    } else {
+        res.status(401).json({
+            status: "error",
+            message: "การเข้าถึงปฏิเสธ: ตรวจสอบอีเมลหรือรหัสผ่านระบบ #AGI244 อีกครั้ง"
+        });
+    }
+});
+
+// Endpoint เพิ่มบัญชีอีเมลใหม่เข้าสู่ระบบได้แบบ Real-time โดยไม่มีลิมิต
+app.post('/api/vider/add-email', (req, res) => {
+    const { masterCode, newEmail } = req.body;
+
+    if (masterCode === "#AGI244" && newEmail) {
+        if (!AUTHORIZED_EMAILS.includes(newEmail)) {
+            AUTHORIZED_EMAILS.push(newEmail);
+        }
+        res.status(200).json({
+            status: "success",
+            message: `เพิ่มอีเมล ${newEmail} เข้าสู่ระบบ Vider สำเร็จเรียบร้อย`,
+            currentList: AUTHORIZED_EMAILS
+        });
+    } else {
+        res.status(403).json({ status: "error", message: "ไม่สามารถเพิ่มอีเมลได้: รหัสผ่าน Master Code ไม่ถูกต้อง" });
+    }
+});
+
+// Endpoint หลักของ Vider สำหรับประมวลผลคำสั่งแบบไม่จำกัดขนาดข้อมูล (Unlimited Payload)
+app.post('/api/vider/core', (req, res) => {
+    const { email, prompt } = req.body;
+
+    if (!AUTHORIZED_EMAILS.includes(email)) {
+        return res.status(403).json({ error: "Unauthorized access." });
+    }
+
+    res.json({
+        status: "active",
+        limit: "unlimited",
+        responder: "Chat Vider",
+        user: email,
+        processedPrompt: prompt,
+        response: `ระบบ Vider ประมวลผลคำสั่งแบบไม่จำกัดลิมิตเรียบร้อยแล้ว พร้อมส่งข้อมูลเชื่อมต่อภายนอกทันที!`
+    });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Vider Bridge API (Unlimited Mode) running on port ${PORT}`);
+});
