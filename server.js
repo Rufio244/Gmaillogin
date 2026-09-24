@@ -13,11 +13,20 @@ const AUTHORIZED_EMAILS = [
     "thanvas9991@gmail.com"
 ];
 
+// หน้าแรกตรวจสอบสถานะระบบ
+app.get('/', (req, res) => {
+    res.json({
+        status: "online",
+        system: "Chat Vider AGI Ecosystem",
+        owner: "Thanva Phupingbut",
+        message: "Vider Gmail Login Bridge is running successfully!"
+    });
+});
+
 // Endpoint สำหรับตรวจสอบสิทธิ์และล็อกอินข้ามแพลตฟอร์ม
 app.post('/api/vider/auth', (req, res) => {
     const { email, accessCode } = req.body;
 
-    // ตรวจสอบว่าอีเมลอยู่ในรายชื่อที่อนุญาตหรือไม่ และรหัสผ่านถูกต้อง (#AGI244)
     if (AUTHORIZED_EMAILS.includes(email) && accessCode === "#AGI244") {
         res.status(200).json({
             status: "success",
@@ -42,7 +51,6 @@ app.post('/api/vider/core', (req, res) => {
         return res.status(403).json({ error: "Unauthorized access." });
     }
 
-    // จำลองการประมวลผลคำสั่งของ Vider
     res.json({
         status: "active",
         responder: "Chat Vider",
