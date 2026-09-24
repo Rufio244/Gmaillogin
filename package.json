@@ -1,0 +1,15 @@
+{
+  "name": "vider-gmail-login-bridge",
+  "version": "1.0.0",
+  "description": "Vider Multi-Account Auth & Bridge API for Gmail and External Systems",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  },
+  "author": "Thanva Phupingbut",
+  "license": "MIT"
+}
