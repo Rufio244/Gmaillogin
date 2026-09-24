@@ -84,10 +84,7 @@ passport.use(new GoogleStrategy({
     return done(null, false);
   }
 
-  return done(null, {
-    email,
-    name: profile.displayName || ''
-  });
+  return done(null, { email, name: profile.displayName || '' });
 }));
 
 function requireGoogleUser(req, res, next) {
@@ -154,9 +151,13 @@ app.post('/api/vider/logout', requireFrontendOrigin, requireGoogleUser, (req, re
   });
 });
 
+function validatePrompt(prompt) {
+  return typeof prompt === 'string' && prompt.trim().length > 0 && prompt.length <= 8000;
+}
+
 app.post('/api/vider/core', requireFrontendOrigin, requireGoogleUser, (req, res) => {
   const prompt = req.body && req.body.prompt;
-  if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 8000) {
+  if (!validatePrompt(prompt)) {
     return res.status(400).json({ error: 'prompt must be a non-empty string of at most 8000 characters.' });
   }
 
@@ -168,106 +169,82 @@ app.post('/api/vider/core', requireFrontendOrigin, requireGoogleUser, (req, res)
   });
 });
 
+// Bounded in-memory queue for serialized provider work. It does not bypass provider quotas.
+const requestQueue = [];
+let isProcessingQueue = false;
+const MAX_QUEUE_SIZE = 100;
+const QUEUE_TIMEOUT_MS = 30_000;
+
+function processQueue() {
+  if (isProcessingQueue || requestQueue.length === 0) return;
+  isProcessingQueue = true;
+  const task = requestQueue.shift();
+
+  Promise.resolve()
+    .then(() => task.process())
+    .then(task.resolve, task.reject)
+    .finally(() => {
+      isProcessingQueue = false;
+      processQueue();
+    });
+}
+
+app.post('/api/vider/proxy-core', requireFrontendOrigin, requireGoogleUser, (req, res) => {
+  const prompt = req.body && req.body.prompt;
+  if (!validatePrompt(prompt)) {
+    return res.status(400).json({ error: 'prompt must be a non-empty string of at most 8000 characters.' });
+  }
+  if (requestQueue.length >= MAX_QUEUE_SIZE) {
+    return res.status(429).json({ error: 'Request queue is full. Please retry later.' });
+  }
+
+  let timeout;
+  const result = new Promise((resolve, reject) => {
+    requestQueue.push({
+      process: async () => ({
+        status: 'received',
+        mode: 'serialized-provider-request',
+        user: req.user.email,
+        processedPrompt: prompt,
+        message: 'Request queued successfully. No external provider is configured yet.',
+        timestamp: new Date().toISOString()
+      }),
+      resolve: (value) => { clearTimeout(timeout); resolve(value); },
+      reject: (error) => { clearTimeout(timeout); reject(error); }
+    });
+    processQueue();
+  });
+
+  timeout = setTimeout(() => {
+    res.status(504).json({ error: 'Queued request timed out.' });
+  }, QUEUE_TIMEOUT_MS);
+
+  return result.then((value) => {
+    if (!res.headersSent) res.json(value);
+  }).catch((error) => {
+    if (!res.headersSent) res.status(500).json({ error: 'Queue processing failed.' });
+    console.error('Queue processing failed:', error);
+  });
+});
+
 app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
   const status = Number.isInteger(err.status) && err.status >= 400 && err.status < 500 ? err.status : 500;
   console.error('Request failed:', err.name || 'Error');
-  return res.status(status).json({
-    error: status < 500 ? 'Invalid request.' : 'Internal server error.'
-  });
+  return res.status(status).json({ error: status < 500 ? 'Invalid request.' : 'Internal server error.' });
 });
 
 const port = Number(process.env.PORT || 3000);
-app.listen(port, () => {
+if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  throw new Error('PORT must be an integer between 1 and 65535.');
+}
+
+const server = app.listen(port, () => {
   console.log('Vider Bridge API listening on port ' + port);
 });
-const express = require('express');
-const cors = require('cors');
-const app = express();
 
-app.use(express.json({ limit: '50mb' })); // ขยายลิมิตการรับส่งข้อมูลขนาดใหญ่
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
-app.use(cors());
-
-// รายชื่อบัญชีอีเมลหลัก (สามารถเพิ่มต่อท้ายได้แบบไม่จำกัด)
-let AUTHORIZED_EMAILS = [
-    "thanva04122532@gmail.com",
-    "rufiodinoto244@gmail.com",
-    "phupingbut244@gmail.com",
-    "thanvas9991@gmail.com"
-];
-
-// หน้าแรกตรวจสอบสถานะระบบ
-app.get('/', (req, res) => {
-    res.json({
-        status: "online",
-        mode: "Unlimited & Dynamic Scaling",
-        system: "Chat Vider AGI Ecosystem",
-        owner: "Thanva Phupingbut",
-        totalAuthorizedEmails: AUTHORIZED_EMAILS.length,
-        message: "Vider Gmail Login Bridge is running with NO LIMITS!"
-    });
-});
-
-// Endpoint สำหรับตรวจสอบสิทธิ์และล็อกอิน (รองรับการขยายแบบไม่จำกัด)
-app.post('/api/vider/auth', (req, res) => {
-    const { email, accessCode } = req.body;
-
-    // ตรวจสอบรหัสผ่านหลัก #AGI244
-    if (AUTHORIZED_EMAILS.includes(email) && accessCode === "#AGI244") {
-        res.status(200).json({
-            status: "success",
-            limit: "unlimited",
-            message: "ยืนยันสิทธิ์สำเร็จ! ระบบเปิดใช้งานแบบไม่จำกัดลิมิตสำหรับคุณธันวา",
-            owner: "Thanva Phupingbut",
-            system: "Chat Vider AGI Ecosystem",
-            timestamp: new Date().toISOString()
-        });
-    } else {
-        res.status(401).json({
-            status: "error",
-            message: "การเข้าถึงปฏิเสธ: ตรวจสอบอีเมลหรือรหัสผ่านระบบ #AGI244 อีกครั้ง"
-        });
-    }
-});
-
-// Endpoint เพิ่มบัญชีอีเมลใหม่เข้าสู่ระบบได้แบบ Real-time โดยไม่มีลิมิต
-app.post('/api/vider/add-email', (req, res) => {
-    const { masterCode, newEmail } = req.body;
-
-    if (masterCode === "#AGI244" && newEmail) {
-        if (!AUTHORIZED_EMAILS.includes(newEmail)) {
-            AUTHORIZED_EMAILS.push(newEmail);
-        }
-        res.status(200).json({
-            status: "success",
-            message: `เพิ่มอีเมล ${newEmail} เข้าสู่ระบบ Vider สำเร็จเรียบร้อย`,
-            currentList: AUTHORIZED_EMAILS
-        });
-    } else {
-        res.status(403).json({ status: "error", message: "ไม่สามารถเพิ่มอีเมลได้: รหัสผ่าน Master Code ไม่ถูกต้อง" });
-    }
-});
-
-// Endpoint หลักของ Vider สำหรับประมวลผลคำสั่งแบบไม่จำกัดขนาดข้อมูล (Unlimited Payload)
-app.post('/api/vider/core', (req, res) => {
-    const { email, prompt } = req.body;
-
-    if (!AUTHORIZED_EMAILS.includes(email)) {
-        return res.status(403).json({ error: "Unauthorized access." });
-    }
-
-    res.json({
-        status: "active",
-        limit: "unlimited",
-        responder: "Chat Vider",
-        user: email,
-        processedPrompt: prompt,
-        response: `ระบบ Vider ประมวลผลคำสั่งแบบไม่จำกัดลิมิตเรียบร้อยแล้ว พร้อมส่งข้อมูลเชื่อมต่อภายนอกทันที!`
-    });
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Vider Bridge API (Unlimited Mode) running on port ${PORT}`);
-});
+function shutdown() {
+  server.close(() => pool.end().finally(() => process.exit(0)));
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
